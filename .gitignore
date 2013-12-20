@@ -1,4 +1,5 @@
 .svn
+.gitattributes
 branches
 tags
 trunk
