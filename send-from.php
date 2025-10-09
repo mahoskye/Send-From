@@ -3,31 +3,14 @@
 Plugin Name: Send From
 Plugin URI: http://wordpress.org/plugins/send-from/
 Description: Plugin for modifying the from line on all emails coming from WordPress.
-Version: 2.0
+Version: 2.3
 Author: Benjamin Buddle
-Author URI: http://www.mahoskye.com/
-License: GPL2
+Author URI: https://github.com/mahoskye
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 */
 
-/**
- * @author Benjamin Buddle
- * @copyright Benjamin Buddle 2011-2014 All Rights Reserved
- * @license This code is released under GNU GENERAL PUBLIC LICENSE Version 3.0 <http://www.gnu.org/licenses/gpl.html>
- */
-
-/**
- * CHANGELOG
- * 2.0 - Updated the code to fix naming conventions, reduce size, and fix and issue with the options page
- * 1.3 - Fixed typo
- * 1.2 - Fixed issue with update message not displaying properly
- * 1.1 - Fixed Error where default address was not properly used
- * 1.0 - Send Test Working and showing proper messages
- * 0.9 - Send Test Implemented and working, showing 'Settings Saved.'
- * 0.8 - Working without Send Test option
- * 0.7 - Added Options Page
- * 0.5 - Revision / working draft
- * 0.1 - Initial approact to content
- */
+ 
 if(!class_exists('Send_From')){
 	class Send_From{
 
@@ -36,10 +19,9 @@ if(!class_exists('Send_From')){
 		public function __construct(){
 			$this->Send_From_Options = get_option('Send_From_Options');
 			if(!get_option('Send_From_Options')){
-				// Create a default email address & set for later use
-				$sitename = strtolower($_SERVER['SERVER_NAME']);
-				$sitename = substr($sitename,0,4)=='www.' ? substr($sitename, 4) : $sitename;
-				$defaultEmail = 'wordpress@'.$sitename;
+				// Create a default email address & set for later use.
+				// Prefer WordPress site URL when available, fall back to SERVER_NAME, then 'example.com'.
+				$defaultEmail = $this->get_default_email();
 				$this->Send_From_Options = array('mail_from' => $defaultEmail,'mail_from_name' => 'WordPress');
 
 				// Check for variables under the old option name and set if they exist
@@ -52,8 +34,26 @@ if(!class_exists('Send_From')){
 				// Ensure a default value is set & stored
 				add_option('Send_From_Options', $this->Send_From_Options);
 			} // END if(!get_option('Send_From_Options'))
+
+			// Defensive: normalize and validate any existing stored options (in case they were written directly).
+			$current = get_option('Send_From_Options');
+			if(is_array($current)){
+				$validated = $this->Send_From_Options_Validation($current);
+				// If validation changed values, update the stored option to the sanitized copy.
+				if($validated !== $current){
+					update_option('Send_From_Options', $validated);
+					$this->Send_From_Options = $validated;
+					// Notify admin that values were normalized on load.
+					set_transient('send_from_normalized', true, 30);
+				}
+			}
+
+			// Hook admin notice to display normalization message if needed.
+			add_action('admin_notices', [ $this, 'maybe_show_normalized_notice' ]);
 			// Hook into the admin actions
-			add_action('admin_init', array(&$this, 'admin_init'));
+			add_action('admin_init', [ $this, 'admin_init' ]);
+			// Load plugin textdomain for translations
+			add_action('init', [ $this, 'load_textdomain' ]);
 			add_action('admin_menu', array(&$this, 'add_menu'));
 
 			// Update Wordpress from options on activation
@@ -61,21 +61,33 @@ if(!class_exists('Send_From')){
 		} // END public function __construct
 
 		public function set_send_from_options(){
-			add_filter('wp_mail_from', array(&$this, SF_Address));
-			add_filter('wp_mail_from_name', array(&$this, SF_Name));
+			// Attach filter callbacks. short-array syntax is supported on supported PHP versions.
+			add_filter('wp_mail_from', [ $this, 'SF_Address' ]);
+			add_filter('wp_mail_from_name', [ $this, 'SF_Name' ]);
 		} // END public function set_send_from_options
 
 		public function SF_Address(){
-			return $this->Send_From_Options['mail_from'];
+			// Always fetch the latest saved options to avoid stale values.
+			$options = get_option('Send_From_Options');
+			return isset($options['mail_from']) ? $options['mail_from'] : '';
 		} // END public function SF_Address
 
 		public function SF_Name(){
-			return $this->Send_From_Options['mail_from_name'];
+			// Always fetch the latest saved options to avoid stale values.
+			$options = get_option('Send_From_Options');
+			return isset($options['mail_from_name']) ? $options['mail_from_name'] : '';
 		} // END public function SF_Name
 
 		public function admin_init(){
 			$this->init_settings();
 		} // END public function admin_init
+
+		/**
+		 * Load plugin textdomain for translations.
+		 */
+		public function load_textdomain(){
+			load_plugin_textdomain('send-from', false, dirname(plugin_basename(__FILE__)) . '/languages');
+		}
 
 		public function init_settings(){
 			register_setting('Send_From_Settings_Group', 'Send_From_Options', array(&$this, 'Send_From_Options_Validation'));
@@ -94,21 +106,82 @@ if(!class_exists('Send_From')){
 
 		public function Send_From_Settings_From_Input() {
 			$options = get_option('Send_From_Options');
-			echo "<input name='Send_From_Options_Update' type='hidden' value='updated' /><input id='Send_From_Settings_From' name='Send_From_Options[mail_from]' size='40' type='text' value='{$options['mail_from']}' />";
+			// Escape attribute output to prevent stored XSS when rendering saved option values.
+			$mail_from_val = isset($options['mail_from']) ? esc_attr($options['mail_from']) : '';
+			echo "<input name='Send_From_Options_Update' type='hidden' value='updated' />";
+			echo "<input id='Send_From_Settings_From' name='Send_From_Options[mail_from]' size='40' type='text' value='" . $mail_from_val . "' />";
 		} // END public function Send_From_Settings_From_Input
 
 		public function Send_From_Settings_From_Name_Input() {
 			$options = get_option('Send_From_Options');
-			echo "<input id='Send_From_Settings_From_Name' name='Send_From_Options[mail_from_name]' size='40' type='text' value='{$options['mail_from_name']}' />";
+			// Escape attribute output to prevent stored XSS when rendering saved option values.
+			$mail_from_name_val = isset($options['mail_from_name']) ? esc_attr($options['mail_from_name']) : '';
+			echo "<input id='Send_From_Settings_From_Name' name='Send_From_Options[mail_from_name]' size='40' type='text' value='" . $mail_from_name_val . "' />";
 		} // END public function Send_From_Settings_From_Name_Input
 
 		public function Send_From_Options_Validation($input){
-			$newinput['mail_from'] = trim($input['mail_from']);
-			$newinput['mail_from_name'] = trim($input['mail_from_name']);
-			if($newinput['mail_from'] == '') {$newinput['mail_from'] = $this->Send_From_Options['mail_from'];}
-			if($newinput['mail_from_name'] == '') {$newinput['mail_from_name'] = $this->Send_From_Options['mail_from_name'];}
+			// Ensure expected keys exist and sanitize values before storing to prevent stored XSS.
+			$newinput = array();
+			// Sanitize email; if invalid or empty, fall back to previous option value.
+			if(isset($input['mail_from'])){
+				$san_email = sanitize_email(trim($input['mail_from']));
+				// Only accept sanitized email if it's a valid email address; otherwise fall back to previous/default.
+				if(!empty($san_email) && is_email($san_email)){
+					$newinput['mail_from'] = $san_email;
+				} else {
+					// Fall back to a safe default address using noreply@host to avoid storing invalid addresses.
+					$newinput['mail_from'] = $this->get_default_email();
+				}
+			} else {
+				$newinput['mail_from'] = isset($this->Send_From_Options['mail_from']) ? $this->Send_From_Options['mail_from'] : '';
+			}
+			// Sanitize name as plain text (strip tags, remove invalid UTF-8, etc.)
+			if(isset($input['mail_from_name'])){
+				$newinput['mail_from_name'] = sanitize_text_field(trim($input['mail_from_name']));
+				if($newinput['mail_from_name'] == ''){
+					$newinput['mail_from_name'] = isset($this->Send_From_Options['mail_from_name']) ? $this->Send_From_Options['mail_from_name'] : '';
+				}
+			} else {
+				$newinput['mail_from_name'] = isset($this->Send_From_Options['mail_from_name']) ? $this->Send_From_Options['mail_from_name'] : '';
+			}
 			return $newinput;
 		} // END public function Send_From_Options_Validation
+
+		/**
+		 * Build a sane default email address using site host, preferring noreply@
+		 */
+		private function get_default_email(){
+			$sitename = '';
+			if(function_exists('home_url')){
+				if(function_exists('wp_parse_url')){
+					$host = wp_parse_url(home_url(), PHP_URL_HOST);
+				} else {
+					$parsed = parse_url(home_url());
+					$host = isset($parsed['host']) ? $parsed['host'] : false;
+				}
+				if($host){
+					$sitename = strtolower($host);
+				}
+			}
+			if(empty($sitename) && isset($_SERVER['SERVER_NAME'])){
+				$sitename = strtolower($_SERVER['SERVER_NAME']);
+			}
+			if(empty($sitename)){
+				$sitename = 'example.com';
+			}
+			$sitename = substr($sitename,0,4)=='www.' ? substr($sitename, 4) : $sitename;
+			return 'noreply@' . $sitename;
+		}
+
+		/**
+		 * Show an admin notice if normalization occurred on load.
+		 */
+		public function maybe_show_normalized_notice(){
+			if(get_transient('send_from_normalized')){
+				delete_transient('send_from_normalized');
+				echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Send From: plugin sanitized and normalized stored settings for security. Please review settings.', 'send-from') . '</p></div>';
+			}
+		}
 
 		public function Send_From_Send_Test_Main_Text(){
 			echo '<p>Enter an email address to send a test message from the server.</p>';
@@ -116,16 +189,23 @@ if(!class_exists('Send_From')){
 
 		public function Send_From_Send_Test_To_Input() {
 			$options = get_option('Send_From_Options');
-			echo "<input name='Send_From_Send_Test_Opts_Update' type='hidden' value='updated' /><input id='Send_From_Send_Test_To_Input' name='Send_From_Send_Test_Opts[Send_From_Send_To]' size='40' type='text' value='' />";
+			// Render an empty input for the test-to field; escaping applied if populating a default in future.
+			echo "<input name='Send_From_Send_Test_Opts_Update' type='hidden' value='updated' />";
+			echo "<input id='Send_From_Send_Test_To_Input' name='Send_From_Send_Test_Opts[Send_From_Send_To]' size='40' type='text' value='' />";
 		} // END public function Send_From_Send_Test_To_Input
 
 		public function Send_From_Do_Send_Test($input){
-			if($input['Send_From_Send_To'] == ''){
-				$input_array = array('Send_From_Send_Test' => 'false');
+			// Sanitize and validate the test recipient email address.
+			$input_array = array('Send_From_Send_Test' => 'false');
+			if(!isset($input['Send_From_Send_To'])){
 				return $input_array;
-			} // END if($input['Send_From_Send_To'] == '')
-			$newinput = htmlspecialchars($input['Send_From_Send_To']);
-			$input_array = array('Send_From_Send_Test' => 'true', 'Send_From_Send_To' => $newinput );
+			}
+			$to = sanitize_email(trim($input['Send_From_Send_To']));
+			if($to == '' || !is_email($to)){
+				// invalid email address; do not mark as sent nor store unsafe value
+				return $input_array;
+			}
+			$input_array = array('Send_From_Send_Test' => 'true', 'Send_From_Send_To' => $to );
 			return $input_array;
 		} // END public function Send_From_Do_Send_Test
 
@@ -144,23 +224,24 @@ if(!class_exists('Send_From')){
 <?php
 				// When send test is clicked, attempt to send an email 
 				if(isset($_POST['Send_From_Send_Test_Opts_Update'])){
-					$test_message = $_POST['Send_From_Send_Test_Opts'];
-					$test_message = trim($test_message['Send_From_Send_To']);
-
-					if($test_message != ''){
-						// Set up the mail variables
-						$to = $test_message;
+					// Safely read and validate the posted test-send email address.
+					$raw = '';
+					if(isset($_POST['Send_From_Send_Test_Opts']['Send_From_Send_To'])){
+						$raw = trim(wp_unslash($_POST['Send_From_Send_Test_Opts']['Send_From_Send_To']));
+					}
+					$to = sanitize_email($raw);
+					if($to != '' && is_email($to)){
 						$subject = 'Send From: Test mail to ' . $to;
 						$message = 'This is a test email generated by the Send From WordPress plugin.';
 
-						// Send the test mail & display success
+						// Send the test mail & display success (do not echo raw input)
 						ob_start();
-						$result = wp_mail($to,$subject,$message);
-						$Send_From_debug = ob_get_clean();
-						echo '<div class="updated fade"><p>Test message has been sent.</p></div>';
+						$result = wp_mail($to, $subject, $message);
+						ob_get_clean();
+						echo '<div class="updated fade"><p>' . esc_html__('Test message has been sent.', 'send-from') . '</p></div>';
 					} else {
-						echo '<div class="error fade"><p>There was no one to send the message to, please fill out the Send Test To field and try again.</p></div>';
-					} // END if($test_message != '') else
+						echo '<div class="error fade"><p>' . esc_html__('There was no valid email to send the message to, please fill out the Send Test To field with a valid address and try again.', 'send-from') . '</p></div>';
+					}
 					// Update Wordpress from options on activation
 					$this->set_send_from_options();
 				} // End Post Actions
@@ -180,7 +261,7 @@ if(!class_exists('Send_From')){
 
 				<form method="post" action="<?php
 					$post_url = isset( $_GET['settings-updated'] ) ? remove_query_arg('settings-updated', wp_get_referer()) : "" ;
-					echo $post_url; ?>">
+					echo esc_url($post_url); ?>">
 					<?php settings_fields('Send_From_Send_Test_Group');
 					do_settings_sections('Send_From_Send_Test');
 					submit_button('Send Test &raquo;', 'secondary', 'Send_From_Send_Test'); ?>

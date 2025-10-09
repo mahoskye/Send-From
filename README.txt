@@ -1,9 +1,9 @@
 === Send From ===
 Contributors: Benjamin Buddle
 Tags: mail, mailer, phpmailer, change, from, send, email
-Requires at least: 3.2.1
-Tested up to: 3.8
-Stable tag: 2.0
+Requires at least: 5.9
+Tested up to: 6.4
+Stable tag: 2.3
 
 Plugin for modifying the from line on all emails coming from WordPress.
 
@@ -46,6 +46,7 @@ Chances are if it's not working with another plugin then I have not encountered 
 If there are any issues that crop up, I will be happy to take a look at solving them. However, due to many factors, I can't offer active support for the plugin. 
 
 == Changelog ==
+ 2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping; validated test-send addresses. Bumped compatibility flags.
  2.0 - Updated the code to fix naming conventions, reduce size, and fix and issue with the options page
  1.3 - Fixed typo
  1.2 - Fixed issue with update message not displaying properly
@@ -56,3 +57,15 @@ If there are any issues that crop up, I will be happy to take a look at solving 
  0.7 - Added Options Page
  0.5 - Revision / working draft
  0.1 - Initial approact to content
+
+== Security ==
+
+CVE: CVE-2025-46469 - Cross-site scripting (Stored XSS) in plugin settings.
+
+Summary: A stored XSS issue was reported in older versions of this plugin where un-sanitized input saved in plugin options could later be rendered into the admin interface without proper escaping. The repository has been updated to sanitize incoming option values and escape output when rendering form fields. The plugin also validates the test-send email address.
+
+Mitigation applied in this repository:
+- Sanitize email values with WordPress' sanitize_email() before saving.
+- Sanitize name fields with sanitize_text_field() before saving.
+- Escape values when printed into HTML attributes using esc_attr().
+- Validate test-send addresses with is_email() and refuse to save invalid addresses.
