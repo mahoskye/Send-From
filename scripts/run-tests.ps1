@@ -13,7 +13,7 @@ Start-Sleep -Seconds 5
 
 # Check if WordPress test suite is installed
 Write-Host "Checking WordPress test suite..." -ForegroundColor Yellow
-$testLibExists = docker compose exec -T phpunit test -d /tmp/wordpress-tests-lib
+docker compose exec -T phpunit test -d /tmp/wordpress-tests-lib
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Installing WordPress test suite..." -ForegroundColor Yellow
 
@@ -34,17 +34,27 @@ Write-Host "Installing Composer dependencies..." -ForegroundColor Yellow
 docker compose exec -T phpunit sh -c "if ! command -v composer >/dev/null 2>&1; then apk add --no-cache composer; fi"
 docker compose exec -T phpunit composer install --no-interaction --prefer-dist
 
-# Run PHPUnit tests
-Write-Host "`nRunning PHPUnit tests..." -ForegroundColor Green
+# Run single-site PHPUnit tests
+Write-Host "`nRunning single-site PHPUnit tests..." -ForegroundColor Green
 docker compose exec -T phpunit ./vendor/bin/phpunit
 
-# Capture exit code
-$exitCode = $LASTEXITCODE
+$singleSiteExitCode = $LASTEXITCODE
 
-if ($exitCode -eq 0) {
-    Write-Host "`nTests completed successfully!" -ForegroundColor Green
-} else {
-    Write-Host "`nTests failed with exit code: $exitCode" -ForegroundColor Red
+if ($singleSiteExitCode -ne 0) {
+    Write-Host "`nSingle-site tests failed with exit code: $singleSiteExitCode" -ForegroundColor Red
+    exit $singleSiteExitCode
 }
 
-exit $exitCode
+# Run multisite PHPUnit tests
+Write-Host "`nRunning multisite PHPUnit tests..." -ForegroundColor Green
+docker compose exec -T phpunit ./vendor/bin/phpunit -c tests/phpunit/multisite.xml
+
+$multisiteExitCode = $LASTEXITCODE
+
+if ($multisiteExitCode -eq 0) {
+    Write-Host "`nAll tests completed successfully!" -ForegroundColor Green
+} else {
+    Write-Host "`nMultisite tests failed with exit code: $multisiteExitCode" -ForegroundColor Red
+}
+
+exit $multisiteExitCode

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<phpunit
+    bootstrap="../../tests/bootstrap.php"
+    backupGlobals="false"
+    colors="true"
+    convertErrorsToExceptions="true"
+    convertNoticesToExceptions="true"
+    convertWarningsToExceptions="true"
+    stopOnFailure="false">
+    <testsuites>
+        <testsuite name="Send From Plugin Multisite Test Suite">
+            <directory suffix=".php">../../tests</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <const name="MULTISITE" value="1"/>
+        <const name="SUBDOMAIN_INSTALL" value="false"/>
+        <const name="WP_ALLOW_MULTISITE" value="1"/>
+        <const name="WP_MULTISITE" value="1"/>
+    </php>
+</phpunit>

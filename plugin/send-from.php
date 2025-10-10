@@ -22,6 +22,12 @@ if(!defined('SEND_FROM_TEXTDOMAIN')) {
 if(!class_exists('Send_From')){
 	class Send_From{
 
+		const OPTION_KEY = 'Send_From_Options';
+		const LEGACY_OPTION_KEY = 'smf_options';
+		const NORMALIZATION_TRANSIENT = 'send_from_normalized';
+		const NETWORK_UPDATE_ACTION = 'send_from_update_options';
+		const NETWORK_TEST_ACTION = 'send_from_send_test';
+
 		/**
 		 * Stores the plugin options.
 		 *
@@ -30,24 +36,180 @@ if(!class_exists('Send_From')){
 		private $send_from_options;
 
 		/**
+		 * Indicates whether the plugin is running in network (multisite) mode.
+		 *
+		 * @var bool
+		 */
+		private $is_network_mode = false;
+
+		/**
+		 * Cached plugin basename for network checks.
+		 *
+		 * @var string
+		 */
+		private $plugin_basename = '';
+
+		/**
 		 * Initialize the plugin.
 		 */
 		public function __construct(){
+			$this->determine_network_mode();
 			$this->initialize_options();
 			$this->register_hooks();
 			$this->apply_mail_filters();
 		}
 
 		/**
+		 * Determine whether the plugin is network activated in a multisite environment.
+		 */
+		private function determine_network_mode(){
+			$this->plugin_basename = plugin_basename(__FILE__);
+
+			if(function_exists('is_multisite') && is_multisite()){
+				if(!function_exists('is_plugin_active_for_network') && defined('ABSPATH')){
+					require_once ABSPATH . 'wp-admin/includes/plugin.php';
+				}
+
+				if(function_exists('is_plugin_active_for_network') && is_plugin_active_for_network($this->plugin_basename)){
+					$this->is_network_mode = true;
+				}
+			}
+		}
+
+		/**
+		 * Retrieve an option from the appropriate storage depending on activation mode.
+		 *
+		 * @param string $option_name Option key to retrieve.
+		 * @param mixed  $default     Default fallback when no value stored.
+		 * @return mixed Stored option value or default.
+		 */
+		private function get_storage_option($option_name, $default = false){
+			if($this->is_network_mode){
+				$value = get_site_option($option_name, null);
+				if(null !== $value){
+					return $value;
+				}
+				return get_option($option_name, $default);
+			}
+
+			return get_option($option_name, $default);
+		}
+
+		/**
+		 * Add or update an option in the correct storage.
+		 *
+		 * @param string $option_name Option key to save.
+		 * @param mixed  $value       Option value to persist.
+		 */
+		private function add_storage_option($option_name, $value){
+			if($this->is_network_mode){
+				if(false === get_site_option($option_name, false)){
+					add_site_option($option_name, $value);
+				} else {
+					update_site_option($option_name, $value);
+				}
+				return;
+			}
+
+			add_option($option_name, $value);
+		}
+
+		/**
+		 * Update an existing option in storage.
+		 *
+		 * @param string $option_name Option key to update.
+		 * @param mixed  $value       New option value.
+		 */
+		private function update_storage_option($option_name, $value){
+			if($this->is_network_mode){
+				update_site_option($option_name, $value);
+				return;
+			}
+
+			update_option($option_name, $value);
+		}
+
+		/**
+		 * Delete an option from storage, cleaning up both scopes when in network mode.
+		 *
+		 * @param string $option_name Option key to delete.
+		 */
+		private function delete_storage_option($option_name){
+			if($this->is_network_mode){
+				delete_site_option($option_name);
+				// Also remove any site-level copy to avoid unintended fallbacks.
+				delete_option($option_name);
+				return;
+			}
+
+			delete_option($option_name);
+		}
+
+		/**
+		 * Set a transient flag for normalization feedback in the correct scope.
+		 */
+		private function set_normalization_flag(){
+			if($this->is_network_mode){
+				set_site_transient(self::NORMALIZATION_TRANSIENT, true, 30);
+				return;
+			}
+
+			set_transient(self::NORMALIZATION_TRANSIENT, true, 30);
+		}
+
+		/**
+		 * Retrieve the normalization feedback flag.
+		 *
+		 * @return mixed False when no flag is present.
+		 */
+		private function get_normalization_flag(){
+			if($this->is_network_mode){
+				return get_site_transient(self::NORMALIZATION_TRANSIENT);
+			}
+
+			return get_transient(self::NORMALIZATION_TRANSIENT);
+		}
+
+		/**
+		 * Clear the normalization feedback flag.
+		 */
+		private function clear_normalization_flag(){
+			if($this->is_network_mode){
+				delete_site_transient(self::NORMALIZATION_TRANSIENT);
+				return;
+			}
+
+			delete_transient(self::NORMALIZATION_TRANSIENT);
+		}
+
+		/**
+		 * Redirect within the network admin including a status message.
+		 *
+		 * @param string $message_key   Query value indicating which notice to display.
+		 * @param array  $extra_params  Additional query args for redirect.
+		 */
+		private function redirect_network_with_message($message_key, array $extra_params = array()){
+			$args = array_merge(array(
+				'page' => 'send-from',
+				'send-from-message' => $message_key,
+			), $extra_params);
+
+			wp_safe_redirect(add_query_arg($args, network_admin_url('settings.php')));
+			exit;
+		}
+
+		/**
 		 * Initialize plugin options with defaults and migrate legacy settings.
 		 */
 		private function initialize_options(){
-			$this->send_from_options = get_option('Send_From_Options');
+			$stored_options = $this->get_storage_option(self::OPTION_KEY, false);
 
-			if(!get_option('Send_From_Options')){
+			if(false === $stored_options){
 				$this->create_default_options();
 				$this->migrate_legacy_options();
-				add_option('Send_From_Options', $this->send_from_options);
+				$this->add_storage_option(self::OPTION_KEY, $this->send_from_options);
+			} else {
+				$this->send_from_options = $stored_options;
 			}
 
 			$this->validate_and_normalize_options();
@@ -68,10 +230,10 @@ if(!class_exists('Send_From')){
 		 * Migrate options from legacy version (smf_options).
 		 */
 		private function migrate_legacy_options(){
-			$old_options = get_option('smf_options');
-			if($old_options != false){
+			$old_options = $this->get_storage_option(self::LEGACY_OPTION_KEY, false);
+			if($old_options !== false && is_array($old_options)){
 				$this->send_from_options = $old_options;
-				delete_option('smf_options');
+				$this->delete_storage_option(self::LEGACY_OPTION_KEY);
 			}
 		}
 
@@ -79,13 +241,15 @@ if(!class_exists('Send_From')){
 		 * Validate and normalize existing stored options for security.
 		 */
 		private function validate_and_normalize_options(){
-			$current = get_option('Send_From_Options');
+			$current = $this->get_storage_option(self::OPTION_KEY, array());
 			if(is_array($current)){
 				$validated = $this->validate_options($current);
 				if($validated !== $current){
-					update_option('Send_From_Options', $validated);
+					$this->update_storage_option(self::OPTION_KEY, $validated);
 					$this->send_from_options = $validated;
-					set_transient('send_from_normalized', true, 30);
+					$this->set_normalization_flag();
+				} else {
+					$this->send_from_options = $current;
 				}
 			}
 		}
@@ -95,9 +259,20 @@ if(!class_exists('Send_From')){
 		 */
 		private function register_hooks(){
 			add_action('admin_notices', [ $this, 'maybe_show_normalized_notice' ]);
-			add_action('admin_init', [ $this, 'admin_init' ]);
+			if(function_exists('is_multisite') && is_multisite()){
+				add_action('network_admin_notices', [ $this, 'maybe_show_normalized_notice' ]);
+			}
+
+			if($this->is_network_mode){
+				add_action('network_admin_menu', [ $this, 'add_menu' ]);
+				add_action('network_admin_edit_' . self::NETWORK_UPDATE_ACTION, [ $this, 'handle_network_options_update' ]);
+				add_action('network_admin_edit_' . self::NETWORK_TEST_ACTION, [ $this, 'handle_network_test_email' ]);
+			} else {
+				add_action('admin_init', [ $this, 'admin_init' ]);
+				add_action('admin_menu', [ $this, 'add_menu' ]);
+			}
+
 			add_action('init', [ $this, 'load_textdomain' ]);
-			add_action('admin_menu', [ $this, 'add_menu' ]);
 		}
 
 		/**
@@ -115,7 +290,7 @@ if(!class_exists('Send_From')){
 		 */
 		public function get_mail_from_address(){
 			// Always fetch the latest saved options to avoid stale values.
-			$options = get_option('Send_From_Options');
+			$options = $this->get_storage_option(self::OPTION_KEY, array());
 			return isset($options['mail_from']) ? $options['mail_from'] : '';
 		}
 
@@ -126,7 +301,7 @@ if(!class_exists('Send_From')){
 		 */
 		public function get_mail_from_name(){
 			// Always fetch the latest saved options to avoid stale values.
-			$options = get_option('Send_From_Options');
+			$options = $this->get_storage_option(self::OPTION_KEY, array());
 			return isset($options['mail_from_name']) ? $options['mail_from_name'] : '';
 		}
 
@@ -134,6 +309,10 @@ if(!class_exists('Send_From')){
 		 * Handle admin initialization.
 		 */
 		public function admin_init(){
+			if($this->is_network_mode){
+				return;
+			}
+
 			$this->init_settings();
 		}
 
@@ -148,7 +327,11 @@ if(!class_exists('Send_From')){
 		 * Register plugin settings and sections.
 		 */
 		public function init_settings(){
-			register_setting('Send_From_Settings_Group', 'Send_From_Options', [ $this, 'validate_options' ]);
+			if($this->is_network_mode){
+				return;
+			}
+
+			register_setting('Send_From_Settings_Group', self::OPTION_KEY, [ $this, 'validate_options' ]);
 			add_settings_section('Send_From_Settings_Main', '', [ $this,'render_settings_main_text' ], 'Send_From_Settings');
 			add_settings_field('Send_From_Settings_From_Name', esc_html__('From Name:', 'send-from'), [ $this,'render_from_name_input' ],'Send_From_Settings', 'Send_From_Settings_Main');
 			add_settings_field('Send_From_Settings_From', esc_html__('From Email:', 'send-from'), [ $this,'render_from_email_input' ],'Send_From_Settings', 'Send_From_Settings_Main');
@@ -169,7 +352,7 @@ if(!class_exists('Send_From')){
 		 * Render the from email input field.
 		 */
 		public function render_from_email_input() {
-			$options = get_option('Send_From_Options');
+			$options = $this->get_storage_option(self::OPTION_KEY, array());
 			// Escape attribute output to prevent stored XSS when rendering saved option values.
 			$mail_from_val = isset($options['mail_from']) ? esc_attr($options['mail_from']) : '';
 			echo "<input name='Send_From_Options_Update' type='hidden' value='updated' />";
@@ -180,7 +363,7 @@ if(!class_exists('Send_From')){
 		 * Render the from name input field.
 		 */
 		public function render_from_name_input() {
-			$options = get_option('Send_From_Options');
+			$options = $this->get_storage_option(self::OPTION_KEY, array());
 			// Escape attribute output to prevent stored XSS when rendering saved option values.
 			$mail_from_name_val = isset($options['mail_from_name']) ? esc_attr($options['mail_from_name']) : '';
 			echo "<input id='Send_From_Settings_From_Name' name='Send_From_Options[mail_from_name]' size='40' type='text' value='" . $mail_from_name_val . "' />";
@@ -279,10 +462,12 @@ if(!class_exists('Send_From')){
 		 * Show an admin notice if normalization occurred on load.
 		 */
 		public function maybe_show_normalized_notice(){
-			if(get_transient('send_from_normalized')){
-				delete_transient('send_from_normalized');
-				echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Send From: plugin sanitized and normalized stored settings for security. Please review settings.', 'send-from') . '</p></div>';
+			if(!$this->get_normalization_flag()){
+				return;
 			}
+
+			$this->clear_normalization_flag();
+			echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Send From: plugin sanitized and normalized stored settings for security. Please review settings.', 'send-from') . '</p></div>';
 		}
 
 		/**
@@ -327,6 +512,11 @@ if(!class_exists('Send_From')){
 		 * Add plugin menu to WordPress admin.
 		 */
 		public function add_menu(){
+			if($this->is_network_mode){
+				add_submenu_page('settings.php', 'Send From', 'Send From', 'manage_network_options', 'send-from', [ $this, 'render_settings_page' ]);
+				return;
+			}
+
 			add_submenu_page('plugins.php', 'Send From', 'Send From', 'manage_options', 'send-from', [ $this, 'render_settings_page' ]);
 		}
 
@@ -334,6 +524,18 @@ if(!class_exists('Send_From')){
 		 * Render the plugin settings page.
 		 */
 		public function render_settings_page(){
+			if($this->is_network_mode){
+				$this->render_network_settings_screen();
+				return;
+			}
+
+			$this->render_site_settings_screen();
+		}
+
+		/**
+		 * Render settings UI when operating in site (non-network) context.
+		 */
+		private function render_site_settings_screen(){
 			if(!current_user_can('manage_options')){
 				wp_die( esc_html__('You do not have sufficient permissions to access this page.', 'send-from') );
 			}
@@ -347,7 +549,7 @@ if(!class_exists('Send_From')){
 					$this->apply_mail_filters();
 				}
 
-				if ( isset( $_GET['settings-updated'] ) ) {
+				if(isset($_GET['settings-updated'])){
 					echo '<div class="updated fade"><p>' . esc_html__('Settings saved.', 'send-from') . '</p></div>';
 					$this->apply_mail_filters();
 				}
@@ -360,7 +562,7 @@ if(!class_exists('Send_From')){
 				</form>
 
 				<form method="post" action="<?php
-					$post_url = isset( $_GET['settings-updated'] ) ? remove_query_arg('settings-updated', wp_get_referer()) : "" ;
+					$post_url = isset($_GET['settings-updated']) ? remove_query_arg('settings-updated', wp_get_referer()) : '';
 					echo esc_url($post_url); ?>">
 					<?php settings_fields('Send_From_Send_Test_Group');
 					do_settings_sections('Send_From_Send_Test');
@@ -368,6 +570,170 @@ if(!class_exists('Send_From')){
 				</form>
 			</div>
 <?php
+		}
+
+		/**
+		 * Render settings UI when operating in network admin context.
+		 */
+		private function render_network_settings_screen(){
+			if(!current_user_can('manage_network_options')){
+				wp_die( esc_html__('You do not have sufficient permissions to access this page.', 'send-from') );
+			}
+
+			$options = $this->get_storage_option(self::OPTION_KEY, $this->send_from_options);
+?>
+			<div class="wrap">
+				<h1><?php echo esc_html__('Send From', 'send-from'); ?></h1>
+				<?php $this->render_network_feedback_message(); ?>
+
+				<form method="post" action="<?php echo esc_url(network_admin_url('edit.php?action=' . self::NETWORK_UPDATE_ACTION)); ?>">
+					<?php wp_nonce_field('send_from_network_update_action', 'send_from_network_update_nonce'); ?>
+					<input name="Send_From_Options_Update" type="hidden" value="updated" />
+					<?php $this->render_settings_main_text(); ?>
+					<table class="form-table" role="presentation">
+						<tbody>
+							<tr>
+								<th scope="row"><label for="Send_From_Settings_From_Name"><?php echo esc_html__('From Name:', 'send-from'); ?></label></th>
+								<td>
+									<input id="Send_From_Settings_From_Name" name="Send_From_Options[mail_from_name]" size="40" type="text" value="<?php echo isset($options['mail_from_name']) ? esc_attr($options['mail_from_name']) : ''; ?>" />
+								</td>
+							</tr>
+							<tr>
+								<th scope="row"><label for="Send_From_Settings_From"><?php echo esc_html__('From Email:', 'send-from'); ?></label></th>
+								<td>
+									<input id="Send_From_Settings_From" name="Send_From_Options[mail_from]" size="40" type="text" value="<?php echo isset($options['mail_from']) ? esc_attr($options['mail_from']) : ''; ?>" />
+								</td>
+							</tr>
+						</tbody>
+					</table>
+					<?php submit_button( esc_html__('Update Options', 'send-from'), 'primary', 'Submit'); ?>
+				</form>
+
+				<form method="post" action="<?php echo esc_url(network_admin_url('edit.php?action=' . self::NETWORK_TEST_ACTION)); ?>">
+					<?php wp_nonce_field('send_from_network_test_action', 'send_from_network_test_nonce'); ?>
+					<input name="Send_From_Send_Test_Opts_Update" type="hidden" value="updated" />
+					<?php $this->render_test_section_text(); ?>
+					<table class="form-table" role="presentation">
+						<tbody>
+							<tr>
+								<th scope="row"><label for="Send_From_Send_Test_To_Input"><?php echo esc_html__('Send Test To:', 'send-from'); ?></label></th>
+								<td>
+									<input id="Send_From_Send_Test_To_Input" name="Send_From_Send_Test_Opts[Send_From_Send_To]" size="40" type="text" value="" />
+								</td>
+							</tr>
+						</tbody>
+					</table>
+					<?php submit_button( esc_html__('Send Test', 'send-from') . ' &raquo;', 'secondary', 'Send_From_Send_Test'); ?>
+				</form>
+			</div>
+<?php
+		}
+
+		/**
+		 * Display feedback messages in network admin based on query vars.
+		 */
+		private function render_network_feedback_message(){
+			if(!isset($_GET['send-from-message'])){
+				return;
+			}
+
+			$message_key = strtolower(wp_unslash($_GET['send-from-message']));
+			$message_key = preg_replace('/[^a-z0-9_-]/', '', $message_key);
+			$messages = array(
+				'updated' => array('class' => 'notice notice-success is-dismissible', 'text' => esc_html__('Settings saved.', 'send-from')),
+				'test-success' => array('class' => 'notice notice-success is-dismissible', 'text' => esc_html__('Test message has been sent.', 'send-from')),
+				'test-failed' => array('class' => 'notice notice-error', 'text' => esc_html__('Failed to send test message. Please check your mail server configuration.', 'send-from')),
+				'test-invalid' => array('class' => 'notice notice-error', 'text' => esc_html__('There was no valid email to send the message to, please fill out the Send Test To field with a valid address and try again.', 'send-from')),
+				'security-failed' => array('class' => 'notice notice-error', 'text' => esc_html__('Security check failed. Please try again.', 'send-from')),
+			);
+
+			if(isset($messages[$message_key])){
+				printf('<div class="%1$s"><p>%2$s</p></div>', esc_attr($messages[$message_key]['class']), esc_html($messages[$message_key]['text']));
+			}
+		}
+
+		/**
+		 * Handle saving of network-level settings.
+		 */
+		public function handle_network_options_update(){
+			if(!current_user_can('manage_network_options')){
+				wp_die(
+					esc_html__('You do not have sufficient permissions to access this page.', 'send-from'),
+					esc_html__('Permission denied', 'send-from'),
+					array('response' => 403)
+				);
+			}
+
+			if(!isset($_POST['send_from_network_update_nonce']) || !wp_verify_nonce($_POST['send_from_network_update_nonce'], 'send_from_network_update_action')){
+				$this->redirect_network_with_message('security-failed');
+			}
+
+			$raw_input = array();
+			if(isset($_POST['Send_From_Options'])){
+				$raw_input = wp_unslash($_POST['Send_From_Options']);
+				if(!is_array($raw_input)){
+					$raw_input = array();
+				}
+			}
+
+			$validated = $this->validate_options($raw_input);
+			$this->update_storage_option(self::OPTION_KEY, $validated);
+			$this->send_from_options = $validated;
+			$this->apply_mail_filters();
+
+			$this->redirect_network_with_message('updated');
+		}
+
+		/**
+		 * Handle sending of a test email from the network settings UI.
+		 */
+		public function handle_network_test_email(){
+			if(!current_user_can('manage_network_options')){
+				wp_die(
+					esc_html__('You do not have sufficient permissions to access this page.', 'send-from'),
+					esc_html__('Permission denied', 'send-from'),
+					array('response' => 403)
+				);
+			}
+
+			if(!isset($_POST['send_from_network_test_nonce']) || !wp_verify_nonce($_POST['send_from_network_test_nonce'], 'send_from_network_test_action')){
+				$this->redirect_network_with_message('security-failed');
+			}
+
+			$test_opts = array();
+			if(isset($_POST['Send_From_Send_Test_Opts'])){
+				$test_opts = wp_unslash($_POST['Send_From_Send_Test_Opts']);
+				if(!is_array($test_opts)){
+					$test_opts = array();
+				}
+			}
+
+			$validated = $this->validate_test_email($test_opts);
+			if(!isset($validated['Send_From_Send_Test']) || 'true' !== $validated['Send_From_Send_Test']){
+				$this->redirect_network_with_message('test-invalid');
+			}
+
+			$this->apply_mail_filters();
+			$result = $this->deliver_test_email($validated['Send_From_Send_To']);
+
+			$this->redirect_network_with_message($result ? 'test-success' : 'test-failed');
+		}
+
+		/**
+		 * Send the plugin test email and return boolean success.
+		 *
+		 * @param string $to Recipient email address.
+		 * @return bool True when wp_mail reports success.
+		 */
+		private function deliver_test_email($to){
+			/* translators: %s: recipient email address */
+			$subject = sprintf( esc_html__('Send From: Test mail to %s', 'send-from'), $to );
+			$message = esc_html__('This is a test email generated by the Send From WordPress plugin.', 'send-from');
+			ob_start();
+			$result = wp_mail($to, $subject, $message);
+			ob_end_clean();
+
+			return (bool) $result;
 		}
 
 		/**
@@ -380,29 +746,27 @@ if(!class_exists('Send_From')){
 				return;
 			}
 
-			// Safely read and validate the posted test-send email address.
-			$raw = '';
-			if(isset($_POST['Send_From_Send_Test_Opts']['Send_From_Send_To'])){
-				$raw = trim(wp_unslash($_POST['Send_From_Send_Test_Opts']['Send_From_Send_To']));
-			}
-			$to = sanitize_email($raw);
-			if($to != '' && is_email($to)){
-				/* translators: %s: recipient email address */
-				$subject = sprintf( esc_html__('Send From: Test mail to %s', 'send-from'), $to );
-				$message = esc_html__('This is a test email generated by the Send From WordPress plugin.', 'send-from');
-				// Send the test mail with error handling
-				ob_start();
-				$result = wp_mail($to, $subject, $message);
-				ob_get_clean();
-
-				// Check if wp_mail succeeded
-				if($result){
-					echo '<div class="updated fade"><p>' . esc_html__('Test message has been sent.', 'send-from') . '</p></div>';
-				} else {
-					echo '<div class="error fade"><p>' . esc_html__('Failed to send test message. Please check your mail server configuration.', 'send-from') . '</p></div>';
+			$test_opts = array();
+			if(isset($_POST['Send_From_Send_Test_Opts'])){
+				$test_opts = wp_unslash($_POST['Send_From_Send_Test_Opts']);
+				if(!is_array($test_opts)){
+					$test_opts = array();
 				}
-			} else {
+			}
+
+			$validated = $this->validate_test_email($test_opts);
+			if(!isset($validated['Send_From_Send_Test']) || 'true' !== $validated['Send_From_Send_Test']){
 				echo '<div class="error fade"><p>' . esc_html__('There was no valid email to send the message to, please fill out the Send Test To field with a valid address and try again.', 'send-from') . '</p></div>';
+				return;
+			}
+
+			$this->apply_mail_filters();
+			$result = $this->deliver_test_email($validated['Send_From_Send_To']);
+
+			if($result){
+				echo '<div class="updated fade"><p>' . esc_html__('Test message has been sent.', 'send-from') . '</p></div>';
+			} else {
+				echo '<div class="error fade"><p>' . esc_html__('Failed to send test message. Please check your mail server configuration.', 'send-from') . '</p></div>';
 			}
 		}
 	}

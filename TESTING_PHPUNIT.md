@@ -26,7 +26,7 @@ This will:
 - Start the Docker containers (WordPress, MySQL, PHPUnit)
 - Install the WordPress test suite
 - Install PHPUnit and dependencies
-- Run all tests
+- Run the full PHPUnit suite in both single-site and multisite modes
 
 ## Prerequisites (Local Setup)
 

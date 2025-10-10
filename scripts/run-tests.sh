@@ -31,20 +31,32 @@ echo "Installing Composer dependencies..."
 docker compose exec -T phpunit sh -c "if ! command -v composer >/dev/null 2>&1; then apk add --no-cache composer; fi"
 docker compose exec -T phpunit composer install --no-interaction --prefer-dist
 
-# Run PHPUnit tests
+# Run single-site PHPUnit tests
 echo ""
-echo "Running PHPUnit tests..."
+echo "Running single-site PHPUnit tests..."
 docker compose exec -T phpunit ./vendor/bin/phpunit
 
-# Capture exit code
-exitCode=$?
+singleSiteExitCode=$?
 
-if [ $exitCode -eq 0 ]; then
+if [ $singleSiteExitCode -ne 0 ]; then
     echo ""
-    echo "Tests completed successfully!"
-else
-    echo ""
-    echo "Tests failed with exit code: $exitCode"
+    echo "Single-site tests failed with exit code: $singleSiteExitCode"
+    exit $singleSiteExitCode
 fi
 
-exit $exitCode
+# Run multisite PHPUnit tests
+echo ""
+echo "Running multisite PHPUnit tests..."
+docker compose exec -T phpunit ./vendor/bin/phpunit -c tests/phpunit/multisite.xml
+
+multisiteExitCode=$?
+
+if [ $multisiteExitCode -eq 0 ]; then
+    echo ""
+    echo "All tests completed successfully!"
+else
+    echo ""
+    echo "Multisite tests failed with exit code: $multisiteExitCode"
+fi
+
+exit $multisiteExitCode
