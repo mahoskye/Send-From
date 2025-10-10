@@ -374,5 +374,4 @@ Target coverage metrics:
 
 ## Related Documentation
 
-- See `README_TESTING.md` for Docker-based local testing
-- See `README.md` for general plugin information
+- See `README.md` for general plugin information and project structure
