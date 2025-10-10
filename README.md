@@ -16,11 +16,27 @@ Plugin for modifying the from line on all emails coming from WordPress.
 
 I have issues with my hosting service not allowing me to easily set the 'From line' for my server email. Whenever a new user signs up they see username@hostingservice.com even though they should see user@site.com. Before Send From you would be required to modify your installation of Wordpress just about every time you do an update. No longer! With Send From, you simply go into your admin panel and set what the end user will see on their emails from line.
 
+## Project Structure
+
+This repository is organized as follows:
+
+- `plugin/` - Core WordPress plugin files (distributed to WordPress.org)
+  - `send-from.php` - Main plugin file
+  - `README.txt` - WordPress.org readme
+  - `screenshot-1.png` - Plugin screenshot
+  - `LICENSE` - GPLv2 license
+- `tests/` - PHPUnit test suite
+- `scripts/` - Test runner scripts
+- `bin/` - WordPress test suite installation script
+- Development configuration files (docker-compose.yml, phpunit.xml, etc.)
+
 ## Installation
 
-1. Download
-2. Upload to your `/wp-contents/plugins/` directory.
-3. Activate the plugin through the 'Plugins' menu in WordPress.
+1. Download the plugin from WordPress.org or this repository
+2. Upload the `send-from` folder to your `/wp-content/plugins/` directory
+3. Activate the plugin through the 'Plugins' menu in WordPress
+
+For development setup, see TESTING_PHPUNIT.md
 
 ## Set Defaults
 
@@ -52,8 +68,8 @@ If there are any issues that crop up, I will be happy to take a look at solving 
 
 ## Changelog
 
+- 2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping; validated test-send addresses. Implemented comprehensive PHPUnit test suite with 26+ tests. Added Docker-based testing environment. Enhanced email validation with stricter domain requirements. Improved code quality and error handling. Bumped compatibility flags.
 - 2.0 - Updated the code to fix naming conventions, reduce size, and fix and issue with the options page
-- 2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping; validated test-send addresses. Bumped compatibility flags.
 - 1.3 - Fixed typo
 - 1.2 - Fixed issue with update message not displaying properly
 - 1.1 - Fixed Error where default address was not properly used
@@ -77,4 +93,8 @@ If there are any issues that crop up, I will be happy to take a look at solving 
 - Escape values when printed into HTML attributes using `esc_attr()`.
 - Validate test-send addresses with `is_email()` and refuse to save invalid addresses.
 
-Testing instructions are provided in `README_TESTING.md`. A GitHub Actions workflow runs `php -l` on the plugin file to catch syntax issues.
+Testing instructions are provided in `TESTING_PHPUNIT.md`. A GitHub Actions workflow runs `php -l` on the plugin file to catch syntax issues.
+
+## WordPress.org Deployment
+
+When deploying to WordPress.org via SVN, point your SVN trunk to the `plugin/` directory. This directory contains only the files that should be distributed to end users. All development files (tests, Docker configs, etc.) are kept in the repository root.

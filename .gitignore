@@ -1,5 +1,55 @@
+# SVN directories (legacy WordPress.org plugin repo structure)
 .svn
-.gitattributes
 branches
 tags
 trunk
+
+# Git attributes
+.gitattributes
+
+# Composer dependencies
+/vendor/
+
+# PHPUnit
+.phpunit.result.cache
+/phpunit.xml.dist
+
+# IDE and Editor files
+.idea/
+.vscode/
+.claude/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Node modules (if using any build tools)
+node_modules/
+
+# Environment files
+.env
+.env.local
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# WordPress specific
+wp-config.php
+wp-content/uploads/
+wp-content/cache/

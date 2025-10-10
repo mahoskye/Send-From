@@ -22,9 +22,34 @@ services:
       WORDPRESS_DB_USER: wp
       WORDPRESS_DB_PASSWORD: wp
       WORDPRESS_DB_NAME: wordpress
-    # Mount the current project into the plugins folder so WordPress can load the plugin for testing
+    # Mount the plugin directory into the plugins folder so WordPress can load the plugin for testing
     volumes:
-      - ./:/var/www/html/wp-content/plugins/send-from:ro
+      - ./plugin:/var/www/html/wp-content/plugins/send-from:ro
+
+  # PHPUnit testing container
+  phpunit:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM php:8.1-cli-alpine
+        RUN apk add --no-cache bash subversion mysql-client git curl wget unzip \
+            && docker-php-ext-install mysqli pdo pdo_mysql \
+            && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    depends_on:
+      - db
+      - wordpress
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wp
+      WORDPRESS_DB_NAME: wordpress_test
+      WP_TESTS_DIR: /tmp/wordpress-tests-lib
+    volumes:
+      - ./:/plugin:rw
+      - wordpress_test:/tmp/wordpress-tests-lib
+    working_dir: /plugin
+    command: ["tail", "-f", "/dev/null"]
 
 volumes:
   db_data: {}
+  wordpress_test: {}

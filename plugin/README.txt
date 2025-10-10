@@ -46,7 +46,7 @@ Chances are if it's not working with another plugin then I have not encountered 
 If there are any issues that crop up, I will be happy to take a look at solving them. However, due to many factors, I can't offer active support for the plugin. 
 
 == Changelog ==
- 2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping; validated test-send addresses. Bumped compatibility flags.
+ 2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping. Enhanced email validation with stricter domain requirements. Improved code quality and error handling. Bumped compatibility flags.
  2.0 - Updated the code to fix naming conventions, reduce size, and fix and issue with the options page
  1.3 - Fixed typo
  1.2 - Fixed issue with update message not displaying properly
