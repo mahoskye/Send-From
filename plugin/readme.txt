@@ -1,9 +1,11 @@
 === Send From ===
-Contributors: Benjamin Buddle
-Tags: mail, mailer, phpmailer, change, from, send, email
+Contributors: mahoskye
+Tags: email, phpmailer, smtp, mail-from, sender
 Requires at least: 5.9
 Tested up to: 6.4
-Stable tag: 2.3
+Stable tag: 2.4
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Plugin for modifying the from line on all emails coming from WordPress.
 
@@ -46,6 +48,7 @@ Chances are if it's not working with another plugin then I have not encountered 
 If there are any issues that crop up, I will be happy to take a look at solving them. However, due to many factors, I can't offer active support for the plugin. 
 
 == Changelog ==
+ 2.4 - Added full internationalization (i18n) support for all user-facing strings. Plugin is now translation-ready for community translations.
  2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping. Enhanced email validation with stricter domain requirements. Improved code quality and error handling. Bumped compatibility flags.
  2.2 - Added missing quotation marks on line 63, moved config location under Settings
  2.1 - Tested and confirmed working in WP 4.1.2

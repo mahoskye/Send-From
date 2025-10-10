@@ -3,7 +3,7 @@
 Plugin Name: Send From
 Plugin URI: http://wordpress.org/plugins/send-from/
 Description: Plugin for modifying the from line on all emails coming from WordPress.
-Version: 2.3
+Version: 2.4
 Author: Benjamin Buddle
 Author URI: https://github.com/mahoskye
 License: GPLv2 or later
@@ -13,7 +13,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 // Plugin constants
 if(!defined('SEND_FROM_VERSION')) {
-	define('SEND_FROM_VERSION', '2.3');
+	define('SEND_FROM_VERSION', '2.4');
 }
 if(!defined('SEND_FROM_TEXTDOMAIN')) {
 	define('SEND_FROM_TEXTDOMAIN', 'send-from');
@@ -150,19 +150,19 @@ if(!class_exists('Send_From')){
 		public function init_settings(){
 			register_setting('Send_From_Settings_Group', 'Send_From_Options', [ $this, 'validate_options' ]);
 			add_settings_section('Send_From_Settings_Main', '', [ $this,'render_settings_main_text' ], 'Send_From_Settings');
-			add_settings_field('Send_From_Settings_From_Name', 'From Name: ', [ $this,'render_from_name_input' ],'Send_From_Settings', 'Send_From_Settings_Main');
-			add_settings_field('Send_From_Settings_From', 'From Email: ', [ $this,'render_from_email_input' ],'Send_From_Settings', 'Send_From_Settings_Main');
+			add_settings_field('Send_From_Settings_From_Name', esc_html__('From Name:', 'send-from'), [ $this,'render_from_name_input' ],'Send_From_Settings', 'Send_From_Settings_Main');
+			add_settings_field('Send_From_Settings_From', esc_html__('From Email:', 'send-from'), [ $this,'render_from_email_input' ],'Send_From_Settings', 'Send_From_Settings_Main');
 
 			register_setting('Send_From_Send_Test_Group', 'Send_From_Send_Test_Opts', [ $this,'validate_test_email' ]);
-			add_settings_section('Send_From_Send_Test_Main', 'Send a test message', [ $this,'render_test_section_text' ],'Send_From_Send_Test');
-			add_settings_field('Send_From_Send_Test_To', 'Send Test To: ', [ $this,'render_test_email_input' ], 'Send_From_Send_Test', 'Send_From_Send_Test_Main');
+			add_settings_section('Send_From_Send_Test_Main', esc_html__('Send a test message', 'send-from'), [ $this,'render_test_section_text' ],'Send_From_Send_Test');
+			add_settings_field('Send_From_Send_Test_To', esc_html__('Send Test To:', 'send-from'), [ $this,'render_test_email_input' ], 'Send_From_Send_Test', 'Send_From_Send_Test_Main');
 		}
 
 		/**
 		 * Render the main settings section description text.
 		 */
 		public function render_settings_main_text(){
-			echo '<p>Here you have the opportunity to configure the From Name and Email that the server sends from. You will need to use a valid email account from your server otherwise this <strong>WILL NOT WORK</strong>. If left blank this will use the default name of <code>WordPress</code> and the default address <code>wordpress@domain</code>.</p>';
+			echo '<p>' . esc_html__('Here you have the opportunity to configure the From Name and Email that the server sends from. You will need to use a valid email account from your server otherwise this WILL NOT WORK. If left blank this will use the default name of WordPress and the default address wordpress@domain.', 'send-from') . '</p>';
 		}
 
 		/**
@@ -289,7 +289,7 @@ if(!class_exists('Send_From')){
 		 * Render the test email section description text.
 		 */
 		public function render_test_section_text(){
-			echo '<p>Enter an email address to send a test message from the server.</p>';
+			echo '<p>' . esc_html__('Enter an email address to send a test message from the server.', 'send-from') . '</p>';
 		}
 
 		/**
@@ -335,11 +335,11 @@ if(!class_exists('Send_From')){
 		 */
 		public function render_settings_page(){
 			if(!current_user_can('manage_options')){
-				wp_die('You do not have sufficient permissions to access this page.');
+				wp_die( esc_html__('You do not have sufficient permissions to access this page.', 'send-from') );
 			}
 ?>
 			<div class="wrap">
-				<h2>Send From</h2>
+				<h2><?php echo esc_html__('Send From', 'send-from'); ?></h2>
 <?php
 				// When send test is clicked, attempt to send an email
 				if(isset($_POST['Send_From_Send_Test_Opts_Update'])){
@@ -348,7 +348,7 @@ if(!class_exists('Send_From')){
 				}
 
 				if ( isset( $_GET['settings-updated'] ) ) {
-					echo '<div class="updated fade"><p>Settings saved.</p></div>';
+					echo '<div class="updated fade"><p>' . esc_html__('Settings saved.', 'send-from') . '</p></div>';
 					$this->apply_mail_filters();
 				}
 				?>
@@ -356,7 +356,7 @@ if(!class_exists('Send_From')){
 				<form method="post" action="options.php">
 					<?php settings_fields('Send_From_Settings_Group');
 					do_settings_sections('Send_From_Settings');
-					submit_button('Update Options', 'primary', 'Submit'); ?>
+					submit_button( esc_html__('Update Options', 'send-from'), 'primary', 'Submit'); ?>
 				</form>
 
 				<form method="post" action="<?php
@@ -364,7 +364,7 @@ if(!class_exists('Send_From')){
 					echo esc_url($post_url); ?>">
 					<?php settings_fields('Send_From_Send_Test_Group');
 					do_settings_sections('Send_From_Send_Test');
-					submit_button('Send Test &raquo;', 'secondary', 'Send_From_Send_Test'); ?>
+					submit_button( esc_html__('Send Test', 'send-from') . ' &raquo;', 'secondary', 'Send_From_Send_Test'); ?>
 				</form>
 			</div>
 <?php
@@ -387,9 +387,9 @@ if(!class_exists('Send_From')){
 			}
 			$to = sanitize_email($raw);
 			if($to != '' && is_email($to)){
-				$subject = 'Send From: Test mail to ' . $to;
-				$message = 'This is a test email generated by the Send From WordPress plugin.';
-
+				/* translators: %s: recipient email address */
+				$subject = sprintf( esc_html__('Send From: Test mail to %s', 'send-from'), $to );
+				$message = esc_html__('This is a test email generated by the Send From WordPress plugin.', 'send-from');
 				// Send the test mail with error handling
 				ob_start();
 				$result = wp_mail($to, $subject, $message);
