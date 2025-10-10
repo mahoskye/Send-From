@@ -98,3 +98,18 @@ Testing instructions are provided in `TESTING_PHPUNIT.md`. A GitHub Actions work
 ## WordPress.org Deployment
 
 When deploying to WordPress.org via SVN, point your SVN trunk to the `plugin/` directory. This directory contains only the files that should be distributed to end users. All development files (tests, Docker configs, etc.) are kept in the repository root.
+
+### Quick Deployment
+
+Use the deployment script:
+```bash
+./scripts/deploy-to-wordpress.sh
+```
+
+Then manually commit:
+```bash
+cd send-from
+svn ci -m "Update to version 2.3 - Security fix for CVE-2025-46469 (Stored XSS)"
+svn cp trunk tags/2.3
+svn ci -m "Tagging version 2.3"
+```

@@ -3,6 +3,7 @@
 branches
 tags
 trunk
+send-from/
 
 # Git attributes
 .gitattributes
