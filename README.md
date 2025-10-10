@@ -8,7 +8,7 @@ Requires at least: 5.9
 
 Tested up to: 6.4
 
-Stable tag: 2.4
+Stable tag: 2.5
 
 Plugin for modifying the from line on all emails coming from WordPress.
 
@@ -68,6 +68,7 @@ If there are any issues that crop up, I will be happy to take a look at solving 
 
 ## Changelog
 
+- 2.5 - Added full multisite support with network-aware option storage and network admin UI; extended PHPUnit suite with multisite coverage and updated Docker scripts to run single-site and multisite tests automatically.
 - 2.4 - Added full internationalization (i18n) support for all user-facing strings. Plugin is now translation-ready for community translations.
 - 2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping; validated test-send addresses. Implemented comprehensive PHPUnit test suite with 26+ tests. Added Docker-based testing environment. Enhanced email validation with stricter domain requirements. Improved code quality and error handling. Bumped compatibility flags.
 - 2.2 - Added missing quotation marks on line 63, moved config location under Settings

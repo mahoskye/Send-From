@@ -3,7 +3,7 @@ Contributors: mahoskye
 Tags: email, phpmailer, smtp, mail-from, sender
 Requires at least: 5.9
 Tested up to: 6.4
-Stable tag: 2.4
+Stable tag: 2.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,7 @@ Chances are if it's not working with another plugin then I have not encountered 
 If there are any issues that crop up, I will be happy to take a look at solving them. However, due to many factors, I can't offer active support for the plugin. 
 
 == Changelog ==
+ 2.5 - Added full multisite support with network-aware option storage and a network admin UI. Expanded PHPUnit coverage to include multisite runs and updated Docker tooling to execute both single-site and multisite suites.
  2.4 - Added full internationalization (i18n) support for all user-facing strings. Plugin is now translation-ready for community translations.
  2.3 - Security: Fixed stored XSS (CVE-2025-46469). Added input sanitization and output escaping. Enhanced email validation with stricter domain requirements. Improved code quality and error handling. Bumped compatibility flags.
  2.2 - Added missing quotation marks on line 63, moved config location under Settings
